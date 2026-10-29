@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+upstream/
+runs/
+wandb/
+logs/
+checkpoints/
+*.log
+*.jsonl
+*.parquet
+*.pkl
+*.pt
+*.pth
+*.safetensors
+/datasets/

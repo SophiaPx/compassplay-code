@@ -1,0 +1,227 @@
+# AZR training configuration for CompassPlay.
+hydra:
+  searchpath:
+    - pkg://verl.trainer.config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+data:
+  train_files: datasets/coding/code_reason/test_answer.parquet
+  val_files: datasets/coding/code_reason/test_answer.parquet
+  prompt_key: prompt
+  max_prompt_length: 6144
+  max_response_length: 4096
+  train_batch_size: 64
+  val_batch_size: 1312
+  return_raw_chat: True
+  shuffle: True
+  seed: 1
+  truncation: error
+  trust_remote_code: True
+
+actor_rollout_ref:
+
+  model:
+    path: Qwen/Qwen2.5-Coder-7B
+    custom_chat_template: null
+    use_remove_padding: True
+    enable_gradient_checkpointing: True
+    trust_remote_code: True
+
+  actor:
+    strategy: fsdp2
+    ppo_mini_batch_size: 128
+    ppo_micro_batch_size_per_gpu: 16
+    clip_ratio_low: 0.2
+    clip_ratio_high: 0.28
+    entropy_coeff: 0.0
+    use_kl_loss: False
+    kl_loss_coef: 0.0
+    ulysses_sequence_parallel_size: 1
+    optim:
+      lr: 1e-6
+      weight_decay: 0.0
+    fsdp_config:
+      param_offload: False
+      optimizer_offload: False
+      offload_policy: False
+
+  ref:
+    log_prob_micro_batch_size_per_gpu: 64
+    fsdp_config:
+      param_offload: True
+
+  rollout:
+    name: vllm
+    tensor_model_parallel_size: 4
+    gpu_memory_utilization: 0.5
+    max_num_batched_tokens: 16384
+    enforce_eager: False
+    free_cache_engine: False
+    n: 1
+    temperature: 1.0
+    log_prob_micro_batch_size_per_gpu: 64
+    engine_kwargs:
+      vllm:
+        disable_custom_all_reduce: True
+    val_kwargs:
+      temperature: 0
+      do_sample: False
+
+algorithm:
+  adv_estimator: reinforce_plus_plus
+  use_kl_in_reward: False
+  kl_ctrl:
+    kl_coef: 0.0
+
+reward_model:
+  enable: False
+
+trainer:
+  critic_warmup: 0
+  logger: ['console', 'wandb']
+  project_name: compassplay
+  experiment_name: coding
+  n_gpus_per_node: 8
+  nnodes: 1
+  save_freq: 2
+  test_freq: -1
+  val_before_train: False
+  resume_mode: auto
+  default_local_dir: checkpoints
+  total_epochs: 30
+  log_val_generations: 0
+  debug: False
+  debug_port: 5678
+  wandb_run_id: null
+  wandb_tags: null
+
+reward_fn:
+  extraction_type: answer_addition
+  math_metric: deepscaler
+  splitter: "Assistant:"
+  boxed_retry: False
+
+self_play:
+  seed: 1
+  pretrained_tokenizer: True
+  executor_max_workers: 16
+  executor_cleanup_frequency: 1
+  problem_types:
+    - code_i
+    - code_o
+    - code_f
+  pred_data_mix_strategy: "max_new"
+  gen_data_probabilities_strategy: "uniform"
+  past_epoch_window: ${self_play.data_selection_strategy.update_iteration}
+  seed_dataset: null
+  error_seed_dataset: null
+  output_seed_path: null
+  output_error_seed_path: null
+  output_code_f_seed_path: null
+  code_f_seed_dataset: null
+  pretrain_pred_steps: -1
+  executor: qwq
+  ast_check: True
+  execute_max_timeout: 10
+  random_print_max_programs: 3
+  train_propose: True
+  use_china_mirror: True
+  data_selection_strategy:
+    io_n: 6
+    update_iteration: 1
+    data_len: null
+    seed_batch_factor: 4
+    content_max_length: 8096
+    valid_program_filter: all
+    max_programs: null
+    batched_estimate: False
+    composite_function_n_min: -1
+    composite_function_n_max: -1
+    composite_chance: 0.5
+    composite_start_step: -1
+    max_programs_initial: ${self_play.data_selection_strategy.composite_function_n_max}
+    composite_chance_initial: ${self_play.data_selection_strategy.composite_chance}
+    composite_scheduler:
+      enabled: False
+      update_num_programs_start: 101
+      update_num_programs_interval: 50
+      num_programs_max: 3
+      update_probability_start: 101
+      update_probability_interval: 50
+      update_probability_max: 0.8
+      update_probability_increment: 0.01
+    num_inputs: 10
+    banned_words:
+      - logging
+      - random
+      - multiprocessing
+      - pebble
+      - subprocess
+      - threading
+      - datetime
+      - time
+      - hashlib
+      - hmac
+      - bcrypt
+      - os.sys
+      - os.path
+      - sys.exit
+      - os.environ
+      - calendar
+      - datetime
+    banned_keywords_for_errors_and_exceptions:
+  reward:
+    n_samples: 8
+    extract_code_block: True
+    code_f_reward_type: binary
+    generation_reward_config:
+      format_reward: True
+      reject_multiple_functions: True
+      reject_test_input_in_code: False
+      f_replace_location: not_first
+      intrinsic_combine_method: sum
+      remove_after_return: False
+      remove_comments: False
+      remove_print: False
+      use_original_code_as_ref: False
+      generation_accuracy_convertion: one_minus
+      remove_input_from_snippet: False
+      include_references: True
+      code_location: first
+      gradient_alignment:
+        enabled: True
+        coef: 1.0
+        max_response_length: 1152
+        ref_file: datasets/coding/code_reason/gref_heldout_math.jsonl
+        n_ref: 32
+        ref_seed: 0
+      complexity_reward:
+        enabled: False
+        coef: 0.0
+        max: 0.5
+      mean_edit_distance_reward:
+        enabled: False
+        coef: 0.0
+        max: 0.5
+      halstead_reward:
+        enabled: False
+        coef: 0.0
+        max: 0.5
+      answer_diversity_reward:
+        enabled: False
+        coef: 0.0
+        max: 0.5
+        hierarchical: False
+      f_input_answer_diversity_reward:
+        enabled: False
+        coef: 0.0
+        max: 0.5
+        hierarchical: False
+      f_output_answer_diversity_reward:
+        enabled: False
+        coef: 0.0
+        max: 0.5
+        hierarchical: False
